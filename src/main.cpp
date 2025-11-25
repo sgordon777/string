@@ -11,26 +11,27 @@
 
 //#define S3MINIPRO
 //#define S2MINI
-//#define S3ZERO
+#define S3ZERO
 #define NET
 //#define GRAPH
 #define LOCAL_IP (133)
 #define BRIGHTNESS  (255)
 //#define EN_PIN      (12)
-#define LED_PIN     (8)  // 8 for ESP32-S3ZERO (21 builtin), 14 for s3mini-pro, 16 for s2 mini
 //#define DEB_PIN     (42)
 #define BUT_PIN     (0)   //0 for ESP32-S3ZERO, 47 on S3MINPO, 9 for SEED C3, 0 for s2-mini
-#define NUM_LEDS    (101)
+#define NUM_LEDS    (201)
 #define LED_TYPE    WS2812
 #define COLOR_ORDER GRB // GRB for 2812 strip, RGB for christmas lights
 #define BUT_THRESH (10)
-#define NUM_ANI (11)
+#define NUM_ANI (12)
 
 #define DEF_CLRFREQ (3)
 #define DEF_DEL (15)
 #define DEF_CYC (10000)
 
 #if defined (S3ZERO)
+#define LED_PIN     (3)  // 8 for ESP32-S3ZERO (21 builtin), 14 for s3mini-pro, 16 for s2 mini
+#define GND_PIN (2)
 #define LED_PIN_AUX     (21)  // 8 for ESP32-S3ZERO (21 builtin), 14 for s3mini-pro. C3 flaky, C5 nothing
 #define NUM_LEDS_AUX    (1)
 #define LED_TYPE_AUX    WS2812
@@ -189,7 +190,10 @@ void setup() {
     digitalWrite(EN_PIN, 1);
 #endif
     pinMode(LED_PIN, OUTPUT);
-
+#if defined (GND_PIN)
+    pinMode(GND_PIN, OUTPUT);
+    digitalWrite(GND_PIN, 0); 
+#endif
 
 #if defined BUT_PIN
     pinMode(BUT_PIN, INPUT_PULLUP);
@@ -228,6 +232,7 @@ void loop()
     case 9:
     case 10:
     case 11:
+    case 12:
       ani_solid();
       break;
 
@@ -289,23 +294,44 @@ void ani_solid(void)
     return;
 
   oldani = anim_no;
-
-  // modes 1-4, palleted colors
-  switch (anim_no) {
-    case 0:
-      pix1 = 0x000000;
-      break;
-    case 9:
-      pix1 = 0xFF0000;
-      break;
-    case 10:
-      pix1 = 0x00FF00;
-      break;
-    case 11:
-      pix1 = 0xFFFFFF;
-      break;
+  for (int j=0; j<NUM_LEDS; ++j) 
+  {
+    // modes 1-4, palleted colors
+    switch (anim_no) {
+      case 0:
+        pix1 = 0x000000;
+        break;
+      case 9:
+        pix1 = 0xFF0000;
+        break;
+      case 10:
+        pix1 = 0x00FF00;
+        break;
+      case 11:
+        pix1 = 0xFFFFFF;
+        break;
+      case 12:
+        int16_t n = random16(5);
+        switch (n) {
+          case 0:
+            pix1 = 0xFF0000;
+            break;
+          case 1:
+            pix1 = 0x00FF00;
+            break;
+          case 2:
+            pix1 = 0x0000FF;
+            break;
+          case 3:
+            pix1 = 0xFFFFFF;
+            break;
+          case 4:
+            pix1 = 0xFF00FF;
+            break;
+        }
+    }
+    leds[j] = pix1;
   }
-  for (int j=0; j<NUM_LEDS; ++j) leds[j] = pix1;
   FastLED.show();
 }
 
