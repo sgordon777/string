@@ -1,5 +1,5 @@
 #include <Arduino.h>
-
+#include <Preferences.h>
 #include <FastLED.h>
 //#if defined (NET)
 #include "WiFi.h"
@@ -14,12 +14,13 @@
 #define S3ZERO
 #define NET
 //#define GRAPH
-#define LOCAL_IP (133)
-#define BRIGHTNESS  (255)
+#define LOCAL_IP (135)
+#define DEF_BRIGHTNESS  (128)
 //#define EN_PIN      (12)
 //#define DEB_PIN     (42)
 #define BUT_PIN     (0)   //0 for ESP32-S3ZERO, 47 on S3MINPO, 9 for SEED C3, 0 for s2-mini
-#define NUM_LEDS    (201)
+#define MAX_NUM_LEDS    (1024)
+#define NUM_LEDS_DEF (32)
 #define LED_TYPE    WS2812
 #define COLOR_ORDER GRB // GRB for 2812 strip, RGB for christmas lights
 #define BUT_THRESH (10)
@@ -80,7 +81,7 @@ Arduino_GFX *gfx = new Arduino_GC9107(bus, DF_GFX_RST, 1 /* rotation */, true /*
 
 
 
-CRGB leds[NUM_LEDS];
+CRGB leds[MAX_NUM_LEDS];
 #ifdef S3ZERO
 CRGB leds_aux[NUM_LEDS_AUX];
 #endif
@@ -120,12 +121,19 @@ extern const TProgmemRGBPalette16 solidcolor_p FL_PROGMEM =
     0x00FF00, 0x00FF00, 0x00FF00, 0x00FF00
 };
 
+// persistence
+Preferences prefs;  // global instance
+
 // global
+int num_leds = NUM_LEDS_DEF;
 int anim_no = 9;
 int timer_ct = 0;
 int ovrfreq = -1;
 int ovrdel = -1;
 int ovrcyc = -1;
+int ver = 3;
+int storecount = 0;
+int brightness = DEF_BRIGHTNESS;
 
 void gfx_init(void);
 void shift_color(CHSV& incolor, int color_freq);
@@ -139,19 +147,28 @@ void disp_net_status(void);
 void wifi_server_process();
 int set_if_changed(int *val_to_set, int val);
 void check_client_connection();
+void init_leds();
+void readfs();
+void putfs();
 
 
 
-
-void setup() {
-
-  delay( 300 ); // power-up safety delay
-
+void setup() 
+{
   Serial.begin(115200);
+  delay( 300 ); // power-up safety delay
   // Serial.setDebugOutput(true);
   // while(!Serial);
   Serial.println("Starting..");
 
+  // 1) Open a “namespace” in NVS
+  //    Second arg: false = read/write, true = read-only
+  if (!prefs.begin("string", false)) {
+    Serial.println("Failed to init NVS");
+    while (true) {}
+  }  
+
+  readfs();
 
 #if defined(GRAPH)
   gfx_init();
@@ -199,14 +216,51 @@ void setup() {
     pinMode(BUT_PIN, INPUT_PULLUP);
 #endif
 
-    FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+  init_leds();
+    
+}
+
+void init_leds()
+{
+
+
+    FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, num_leds).setCorrection( TypicalLEDStrip );
 
 #if defined(S3ZERO)
-    leds_aux[0] = 0x002000;
     FastLED.addLeds<LED_TYPE_AUX, LED_PIN_AUX, COLOR_ORDER_AUX>(leds_aux, NUM_LEDS_AUX).setCorrection( TypicalLEDStrip );
 #endif    
-    FastLED.setBrightness(  BRIGHTNESS );
-    
+    FastLED.setBrightness(  brightness );
+
+}
+
+void putfs()
+{
+  ++storecount;
+  prefs.putUInt("storecount", storecount);
+  prefs.putUInt("ver", ver);
+  prefs.putUInt("num_leds", num_leds);
+  prefs.putInt("ovrfreq", ovrfreq);
+  prefs.putInt("ovrdel", ovrdel);
+  prefs.putInt("ovrcyc", ovrcyc);
+  prefs.putInt("brightness", brightness);
+
+  Serial.printf("putfs: storect=%u, storedver=%u, leds=%u, ovrfreq=%d, ovrdel=%d, ovrcyc=%d\n", 
+    storecount, ver, num_leds, ovrfreq, ovrdel, ovrcyc);
+}
+
+void readfs()
+{
+  storecount = prefs.getUInt("storecount", 0);  
+  uint32_t storedver = prefs.getUInt("ver", 0);  
+  num_leds = prefs.getUInt("num_leds", NUM_LEDS_DEF);  
+  ovrfreq = prefs.getInt("ovrfreq", -1);  
+  ovrdel = prefs.getInt("ovrdel", -1);  
+  ovrcyc = prefs.getInt("ovrcyc", -1);
+  brightness = prefs.getInt("brightness", DEF_BRIGHTNESS);
+
+
+  Serial.printf("readfs: storect=%u, storedver=%u, leds=%u, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, brightness=%d\n", 
+    storecount, storedver, num_leds, ovrfreq, ovrdel, ovrcyc, brightness);
 }
 
 
@@ -294,7 +348,7 @@ void ani_solid(void)
     return;
 
   oldani = anim_no;
-  for (int j=0; j<NUM_LEDS; ++j) 
+  for (int j=0; j<num_leds; ++j) 
   {
     // modes 1-4, palleted colors
     switch (anim_no) {
@@ -333,6 +387,7 @@ void ani_solid(void)
     leds[j] = pix1;
   }
   FastLED.show();
+  leds_aux[0] = pix1;
 }
 
 
@@ -347,8 +402,8 @@ void ani_pong(void)
   // assumption is that this is called onece every ms
   if (--lpdelay > 0) return;
 
-  for (int j=0; j<NUM_LEDS; ++j) leds[j] = 0;
-  if (startIndex >= 0 && startIndex < NUM_LEDS)
+  for (int j=0; j<num_leds; ++j) leds[j] = 0;
+  if (startIndex >= 0 && startIndex < num_leds)
     leds[startIndex] = 0xFFFFFF;
   else
     Serial.println("OOB\n");
@@ -363,27 +418,27 @@ void ani_pong(void)
   }
   else
   {
-    if (startIndex < NUM_LEDS-1) leds[startIndex+1] = 0xc0c0c0;
-    if (startIndex < NUM_LEDS-2) leds[startIndex+2] = 0xa0a0a0;
-    if (startIndex < NUM_LEDS-3) leds[startIndex+3] = 0x808080;
-    if (startIndex < NUM_LEDS-4) leds[startIndex+4] = 0x606060;
-    if (startIndex < NUM_LEDS-5) leds[startIndex+5] = 0x404040;
-    if (startIndex < NUM_LEDS-6) leds[startIndex+6] = 0x202020;
+    if (startIndex < num_leds-1) leds[startIndex+1] = 0xc0c0c0;
+    if (startIndex < num_leds-2) leds[startIndex+2] = 0xa0a0a0;
+    if (startIndex < num_leds-3) leds[startIndex+3] = 0x808080;
+    if (startIndex < num_leds-4) leds[startIndex+4] = 0x606060;
+    if (startIndex < num_leds-5) leds[startIndex+5] = 0x404040;
+    if (startIndex < num_leds-6) leds[startIndex+6] = 0x202020;
   }
   FastLED.show();
   if (anim_no == 7)
   {
-    if (startIndex >= (NUM_LEDS-1)) dir = -1;
+    if (startIndex >= (num_leds-1)) dir = -1;
     if (startIndex <= 0)  dir = 1;
     startIndex = startIndex + dir; 
   }
   else if (anim_no==8)
   {
     startIndex = startIndex + 1;  
-    if (startIndex >= NUM_LEDS) startIndex = 0;
+    if (startIndex >= num_leds) startIndex = 0;
   }
   lpdelay = 1;
-
+  leds_aux[0] = 0xFFFFFF;
 }
 
 void ani_scroll(void)
@@ -391,7 +446,7 @@ void ani_scroll(void)
   static int startIndex = 0;
   static int colorIndex = 0;
   static int lpdelay = 50;
-  static CRGB leds2[NUM_LEDS];
+  static CRGB leds2[MAX_NUM_LEDS];
   static CHSV pixhsv_col =  CHSV( HUE_PURPLE, 255, 255);
   static CHSV pixhsv_wht =  CHSV( HUE_PURPLE, 0, 255);
   CRGB pix1;
@@ -450,10 +505,11 @@ void ani_scroll(void)
   leds2[startIndex] = pix1;
 
   int n = 0;
-  for (int j=startIndex; j<NUM_LEDS; ++j) leds[n++] = leds2[j];
+  for (int j=startIndex; j<num_leds; ++j) leds[n++] = leds2[j];
   for (int j=0; j<startIndex; ++j)    leds[n++] = leds2[j];
   FastLED.show();
-  startIndex = startIndex - 1;  if (startIndex < 0) startIndex += NUM_LEDS;
+  startIndex = startIndex - 1;  if (startIndex < 0) startIndex += num_leds;
+  leds_aux[0] = pix1;
 }
 
 void shift_color(CHSV& incolor, int color_freq)
@@ -547,14 +603,17 @@ void wifi_server_process()
 {
 #if defined(LOOPBACK)
   // loopback
-  while (wifi_client.connected() && wifi_client.available()) {
+  while (wifi_client.connected() && wifi_client.available()) 
+  {
     int rxd = wifi_client.read(rxbuf, sizeof(rxbuf));
     wifi_client.write(rxbuf, rxd);
   }
 #else
-  while (wifi_client.connected() && wifi_client.available()) {
+  int sumrxd = 0;
+  while (wifi_client.connected() && wifi_client.available()) 
+  {
     int rxd = wifi_client.read(rxbuf, sizeof(rxbuf));
-
+    sumrxd += rxd;
 #if 0
     if (rxd > 0)
     {
@@ -589,8 +648,10 @@ void wifi_server_process()
     if (rxbuf[0] == '?') 
     {
       // remote status request
-      sprintf(infostr, "animation=%d, ovrfreq=%d, ovrdel=%d, ovrcyc=%d \n", anim_no, ovrfreq, ovrdel, ovrcyc);
+      sprintf(infostr, "animation=%d, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, leds=%d, ver=%d, bright=%d [?,n,o,w]\n", 
+        anim_no, ovrfreq, ovrdel, ovrcyc, num_leds, ver, brightness);
       wifi_client.write(infostr, strlen(infostr));
+      Serial.println(infostr);
     } 
     else if (rxbuf[0] == 'O' || rxbuf[0] == 'o' )
     {
@@ -600,15 +661,42 @@ void wifi_server_process()
       if (chk)
       {
         sprintf(infostr, "OK freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
-        Serial.printf("OK freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
       }
       else
       {
         sprintf(infostr, "ERR freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
-        Serial.printf("OK freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
       }
+      Serial.printf("OK freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
       wifi_client.write(infostr, strlen(infostr));
     } 
+    else if (rxbuf[0] == 'N' || rxbuf[0] == 'n' )
+    {
+        int test_leds = atoi(infostr+1);
+        if (test_leds > 0 && test_leds <= MAX_NUM_LEDS)
+        {
+          num_leds = test_leds;
+          sprintf(infostr, "OK num_leds=%d\n", num_leds);
+          wifi_client.write(infostr, strlen(infostr));
+          init_leds();
+        }
+    }
+    else if (rxbuf[0] == 'B' || rxbuf[0] == 'b' )
+    {
+        int test_bright = atoi(infostr+1);
+        if (test_bright >= 0 && test_bright <= 255)
+        {
+          brightness = test_bright;
+          sprintf(infostr, "OK brigh=%d\n", brightness);
+          wifi_client.write(infostr, strlen(infostr));
+          init_leds();
+        }
+    }
+    else if (rxbuf[0] == 'W' or rxbuf[0] == 'w')
+    {
+      putfs();
+      sprintf(infostr, "OK wrote config\n");
+      wifi_client.write(infostr, strlen(infostr));
+    }
     else 
     {
         // intepret as animation#
@@ -617,8 +705,11 @@ void wifi_server_process()
         wifi_client.write(infostr, strlen(infostr));
     }
 #endif
-  }
+  }// while
 #endif  // LOOPBACK
+  if (sumrxd)
+  {
+  }
 }
 
 void disp_net_status(void) {

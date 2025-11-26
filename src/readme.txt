@@ -29,4 +29,17 @@
           ???
                       
   arduino uno
+
+
+todo: 
+  -add starfield sim: sin(x[] with randomized freq and/or phase)
+  -more "trad"
+  -change "cycles" to be based time
+  x -set count remotel
+  x -store settings in nvram
+  x -gLobal brightness control
+  x -command to write
+
+
+
 */
