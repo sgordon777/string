@@ -32,14 +32,17 @@
 
 
 todo: 
-  -add starfield sim: sin(x[] with randomized freq and/or phase)
-  -more "trad"
-  -change "cycles" to be based time
-  x -set count remotel
-  x -store settings in nvram
-  x -gLobal brightness control
-  x -command to write
-
+  x -add starfield sim: sin(x[] with randomized freq and/or phase) v4
+  x -more "trad" v3
+  x -set count remotel v3
+  x -store settings in nvram v3
+  x -gLobal brightness control v3
+  x -command to write v3
+  x -more pong animations v4
+  x -randomize v4
+  -change "cycles" to be based time 
+  -c3-OLD board support
+  -Way to select subset of patterns
 
 
 */

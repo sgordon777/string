@@ -1,4 +1,4 @@
-#include <Arduino.h>
+ #include <Arduino.h>
 #include <Preferences.h>
 #include <FastLED.h>
 //#if defined (NET)
@@ -14,7 +14,7 @@
 #define S3ZERO
 #define NET
 //#define GRAPH
-#define LOCAL_IP (135)
+#define LOCAL_IP (136)
 #define DEF_BRIGHTNESS  (128)
 //#define EN_PIN      (12)
 //#define DEB_PIN     (42)
@@ -24,7 +24,14 @@
 #define LED_TYPE    WS2812
 #define COLOR_ORDER GRB // GRB for 2812 strip, RGB for christmas lights
 #define BUT_THRESH (10)
-#define NUM_ANI (12)
+
+// 6 scroll
+#define BASE_SCROLL (1)
+// 16 pong
+#define BASE_PONG (7)
+// 14 solid
+#define BASE_SOLID (23)
+#define NUM_ANI (36)
 
 #define DEF_CLRFREQ (3)
 #define DEF_DEL (15)
@@ -80,6 +87,8 @@ Arduino_GFX *gfx = new Arduino_GC9107(bus, DF_GFX_RST, 1 /* rotation */, true /*
 #endif
 
 
+#define MAKPIX_SCL(r,g,b,scl) ( ( (unsigned)(r*scl) << 16 ) | ( (unsigned)(g*scl) << 8 ) | ( (unsigned)(b*scl) ) )
+#define MAKPIX(r,g,b) ( ( r << 16 ) | ( g << 8 ) | ( b ) )
 
 CRGB leds[MAX_NUM_LEDS];
 #ifdef S3ZERO
@@ -121,25 +130,31 @@ extern const TProgmemRGBPalette16 solidcolor_p FL_PROGMEM =
     0x00FF00, 0x00FF00, 0x00FF00, 0x00FF00
 };
 
+#define MODE_PLAY_LINEAR 0
+#define MODE_PLAY_RANDOM 1
+
 // persistence
 Preferences prefs;  // global instance
 
 // global
-int num_leds = NUM_LEDS_DEF;
-int anim_no = 9;
+unsigned num_leds = NUM_LEDS_DEF;
+int anim_no = BASE_SOLID;
 int timer_ct = 0;
 int ovrfreq = -1;
 int ovrdel = -1;
 int ovrcyc = -1;
-int ver = 3;
+int ver = 4;
 int storecount = 0;
 int brightness = DEF_BRIGHTNESS;
+uint32_t mode = MODE_PLAY_LINEAR;
+int anim_changed = 1;
 
 void gfx_init(void);
 void shift_color(CHSV& incolor, int color_freq);
-void ani_scroll(void);
-void ani_pong(void);
-void ani_solid(void);
+void ani_scroll(unsigned changed);
+void ani_pong(unsigned changed);
+void ani_solid(unsigned changed);
+void ani_blank(unsigned changed);
 void sin_color(CHSV& incolor, int color_freq);
 void network_sm();
 void net_connect(String ssid);
@@ -243,6 +258,8 @@ void putfs()
   prefs.putInt("ovrdel", ovrdel);
   prefs.putInt("ovrcyc", ovrcyc);
   prefs.putInt("brightness", brightness);
+  prefs.putUInt("mode", mode);
+  
 
   Serial.printf("putfs: storect=%u, storedver=%u, leds=%u, ovrfreq=%d, ovrdel=%d, ovrcyc=%d\n", 
     storecount, ver, num_leds, ovrfreq, ovrdel, ovrcyc);
@@ -257,6 +274,7 @@ void readfs()
   ovrdel = prefs.getInt("ovrdel", -1);  
   ovrcyc = prefs.getInt("ovrcyc", -1);
   brightness = prefs.getInt("brightness", DEF_BRIGHTNESS);
+  mode = prefs.getUInt("mode", MODE_PLAY_LINEAR);
 
 
   Serial.printf("readfs: storect=%u, storedver=%u, leds=%u, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, brightness=%d\n", 
@@ -264,33 +282,21 @@ void readfs()
 }
 
 
+
 void loop()
 {
   static int but_ct = 0;
   
-  switch(anim_no)
-  {
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
-    case 6:
-      ani_scroll();
-      break;
-    case 7:
-    case 8:
-      ani_pong();
-      break;
-    case 0:
-    case 9:
-    case 10:
-    case 11:
-    case 12:
-      ani_solid();
-      break;
+  if (anim_no == 0)
+    ani_blank(anim_changed);
+  else if (anim_no < BASE_PONG)
+    ani_scroll(anim_changed);
+  else if (anim_no < BASE_SOLID)
+    ani_pong(anim_changed);
+  else 
+    ani_solid(anim_changed);
 
-  }
+  anim_changed = 0;
 
 
   #ifdef BUT_PIN
@@ -299,8 +305,12 @@ void loop()
       but_ct = but_ct + 1;
       if (but_ct > BUT_THRESH)
       {
-        ++anim_no;
-        if (anim_no > NUM_ANI) anim_no = 2;
+        if (mode & MODE_PLAY_RANDOM)
+          anim_no = random16(NUM_ANI) + 1;
+        else
+          ++anim_no;
+        if (anim_no > NUM_ANI) anim_no = 1;
+        anim_changed = 1;
         //Serial.printf("button pressed, animation=%d\n", anim_no);
 #if defined (GRAPH)
         sprintf(printbuf,"anim=%d\n", anim_no);
@@ -331,58 +341,153 @@ void loop()
   int cycthrs = (ovrcyc < 0) ? DEF_CYC:ovrcyc;
   if ( ( (timer_ct % cycthrs) ==0) && anim_no > 0)
   {
-    ++anim_no;
+    if (mode & MODE_PLAY_RANDOM)
+      anim_no = random16(NUM_ANI) + 1;
+    else
+      ++anim_no;
     if (anim_no > NUM_ANI) anim_no = 1;  
+    anim_changed = 1;
   }
 
   FastLED.delay(1);
 }
 
 
-void ani_solid(void)
+void ani_blank(unsigned changed)
+{
+  if (changed == 1)
+    for (int j=0; j<num_leds; ++j) 
+      leds[j] = 0;
+  
+
+}
+
+void ani_solid(unsigned changed)
 {
   CRGB pix1;
-  static int oldani = 0;
+  static float freq[MAX_NUM_LEDS];
+  static float phs[MAX_NUM_LEDS];
+  static float y[MAX_NUM_LEDS];
+  static uint8_t sel1[MAX_NUM_LEDS];
+  int newani = 0;
+  int anim = anim_no - BASE_SOLID;
 
-  if (anim_no == oldani)
+//  0, 1, 2, 3, 4, 5 = solid red, gren, blue, white, mix3, mix7
+//  6, 7 = mix3_regen, mix7_regen
+//  8, 9, 10, 11, 12, 13 = twinkle red, green, blue, white, mix3, mix7
+
+  newani = changed;
+
+  if (newani == false && (anim == 6 || anim == 7) && (timer_ct%100)==0 )
+    newani = true;
+
+  if (newani)
+  {
+    if (anim > 7)
+    {
+      for (int i=0; i<num_leds; ++i)
+      {
+        freq[i] = 1.0/100.0 * random16(10);
+        phs[i] = 1.0 * random16(100);
+        y[i] = 0;
+        sel1[i] = random16(7);
+      }
+    }
+    else
+    {
+      for (int i=0; i<num_leds; ++i)
+      {
+        y[i] = 1.0;
+        sel1[i] = random16(7);
+        //Serial.printf("i=%d, sel=%d\n", i, sel1[i]);
+      }
+    }
+  }
+
+
+  if (newani == false && anim < 8)
     return;
 
-  oldani = anim_no;
+  // compute sinsoid for brightness (twinkle)
+  if (anim > 7)
+  {
+    for (int i = 0; i< num_leds; ++i)
+    {
+      y[i] = 0.5 * ( sin( timer_ct * freq[i] + phs[i] ) + 1.0 );
+    }
+  }
+
   for (int j=0; j<num_leds; ++j) 
   {
+    int piss;
     // modes 1-4, palleted colors
-    switch (anim_no) {
+    switch (anim) 
+    {
       case 0:
-        pix1 = 0x000000;
+      case 8:
+        pix1 = MAKPIX_SCL(0xff,0,0,y[j]);
         break;
+      case 1:
       case 9:
-        pix1 = 0xFF0000;
+        pix1 = MAKPIX_SCL(0,0xff,0,y[j]);
         break;
+      case 2:
       case 10:
-        pix1 = 0x00FF00;
+        pix1 = MAKPIX_SCL(0,0,0xff,y[j]);
         break;
+      case 3:
       case 11:
-        pix1 = 0xFFFFFF;
+        pix1 = MAKPIX_SCL(0xff,0xff,0xff,y[j]);
         break;
+      case 4:
+      case 6:
       case 12:
-        int16_t n = random16(5);
-        switch (n) {
+      switch ( sel1[j] ) 
+        {
           case 0:
-            pix1 = 0xFF0000;
-            break;
           case 1:
-            pix1 = 0x00FF00;
+            pix1 = MAKPIX_SCL(0xff,0,0,y[j]);
             break;
           case 2:
-            pix1 = 0x0000FF;
-            break;
           case 3:
-            pix1 = 0xFFFFFF;
+            pix1 = MAKPIX_SCL(0,0xff,0,y[j]);
             break;
           case 4:
-            pix1 = 0xFF00FF;
+          case 5:
+          case 6:
+            pix1 = MAKPIX_SCL(0,0,0xff,y[j]);
             break;
         }
+        break;
+      case 5:
+      case 7:
+      case 13:
+        switch ( sel1[j] ) 
+        {
+          case 0:
+            pix1 = MAKPIX_SCL(0xff,0,0,y[j]);
+            break;
+          case 1:
+            pix1 = MAKPIX_SCL(0,0xff,0,y[j]);
+            break;
+          case 2:
+            pix1 = MAKPIX_SCL(0,0,0xff,y[j]);
+            break;
+          case 3:
+            pix1 = MAKPIX_SCL(0xff,0xff,0xff,y[j]);
+            break;
+          case 4:
+            pix1 = MAKPIX_SCL(0xff,0,0xff,y[j]);
+            break;
+          case 5:
+            pix1 = MAKPIX_SCL(0xff,0xff,0,y[j]);
+            break;
+          case 6:
+            pix1 = MAKPIX_SCL(0,0xff,0xff,y[j]);
+            break;
+        }        
+        break;
+
     }
     leds[j] = pix1;
   }
@@ -391,49 +496,93 @@ void ani_solid(void)
 }
 
 
-
-void ani_pong(void)
+void ani_pong(unsigned changed)
 {
   static int lpdelay = 1;
   static int dir = 1;
-  static int startIndex = 0;
+  static unsigned startIndex = 0;
+  int anim = anim_no - BASE_PONG;
+  int tracelen = 6;
+  int strps = (num_leds /  tracelen) / 2;
+  static int pausectr = 0;
+  int bounce = 1;
+  int cross = 0;
+  uint32_t color;
 
+  // anim;
+  // 0-3 = single bar bounce (red, green, blue, white)
+  // 4-7 = single bar through (red, gree, blue, white)
+  // 8-11 = multibar bounce 
+  // 12-15 = cross pattern bounce
+
+  if (pausectr > 0)
+  {
+    --pausectr;
+    return;
+  }
+
+  int animclr = anim & 0x03;
+  
+  if (animclr == 0) 
+    color = 0xff0000;
+  else if (animclr == 1) 
+    color = 0x00ff00;
+  else if (animclr == 2) 
+    color = 0x0000ff;
+  else // (animclr == 3) 
+    color = 0xffffff;
+
+  int animmode = anim >> 2;
+  if (animmode == 0) 
+  {
+    // single bar, bounce
+    strps = 1;
+  }
+  else if (animmode == 1) 
+  {
+    // single bar, overflow
+    strps = 1;
+    bounce = 0;
+  }
+  else if (animmode == 2) 
+  {
+    // multibar
+    strps = (num_leds /  tracelen) / 2;
+    pausectr = 5;
+  }
+  else // (animmode == 3) 
+  {
+    // cross mode
+    strps = 1;
+    cross = 1;
+  }
+
+  
 
   // assumption is that this is called onece every ms
   if (--lpdelay > 0) return;
 
   for (int j=0; j<num_leds; ++j) leds[j] = 0;
-  if (startIndex >= 0 && startIndex < num_leds)
-    leds[startIndex] = 0xFFFFFF;
-  else
-    Serial.println("OOB\n");
-  if (dir == 1)
+  for (unsigned i=0; i<strps; ++i) 
   {
-    if (startIndex > 0) leds[startIndex-1] = 0xc0c0c0;
-    if (startIndex > 1) leds[startIndex-2] = 0xa0a0a0;
-    if (startIndex > 2) leds[startIndex-3] = 0x808080;
-    if (startIndex > 3) leds[startIndex-4] = 0x606060;
-    if (startIndex > 4) leds[startIndex-5] = 0x404040;
-    if (startIndex > 5) leds[startIndex-6] = 0x202020;
+    for (unsigned j=0; j<tracelen; ++j)
+    {
+      leds[ (startIndex + i*2*tracelen + j) % num_leds ] = color;
+      if (cross) leds[ (num_leds - tracelen - startIndex + i*2*tracelen + j) % num_leds ] = color;
+    }
   }
-  else
-  {
-    if (startIndex < num_leds-1) leds[startIndex+1] = 0xc0c0c0;
-    if (startIndex < num_leds-2) leds[startIndex+2] = 0xa0a0a0;
-    if (startIndex < num_leds-3) leds[startIndex+3] = 0x808080;
-    if (startIndex < num_leds-4) leds[startIndex+4] = 0x606060;
-    if (startIndex < num_leds-5) leds[startIndex+5] = 0x404040;
-    if (startIndex < num_leds-6) leds[startIndex+6] = 0x202020;
-  }
+
   FastLED.show();
-  if (anim_no == 7)
+  if (bounce == 1)
   {
-    if (startIndex >= (num_leds-1)) dir = -1;
+    // bounce mode
+    if (startIndex >= (num_leds-tracelen)) dir = -1;
     if (startIndex <= 0)  dir = 1;
     startIndex = startIndex + dir; 
   }
-  else if (anim_no==8)
+  else
   {
+    // overflow mode
     startIndex = startIndex + 1;  
     if (startIndex >= num_leds) startIndex = 0;
   }
@@ -441,7 +590,7 @@ void ani_pong(void)
   leds_aux[0] = 0xFFFFFF;
 }
 
-void ani_scroll(void)
+void ani_scroll(unsigned changed)
 {
   static int startIndex = 0;
   static int colorIndex = 0;
@@ -451,6 +600,7 @@ void ani_scroll(void)
   static CHSV pixhsv_wht =  CHSV( HUE_PURPLE, 0, 255);
   CRGB pix1;
   int clrfreq;
+  int anim = anim_no - BASE_SCROLL;
 
   TBlendType blend = LINEARBLEND;
   CRGBPalette16 currentPalette;
@@ -462,41 +612,41 @@ void ani_scroll(void)
 //    currentPalette = RainbowColors_p;  // CloudColors_p, LavaColors_p, OceanColors_p, ForestColors_p, RainbowColors_p, RainbowStripeColors_p, PartyColors_p, HeatColors_p
 
   // modes 1-4, palleted colors
-  switch (anim_no) {
-    case 1:
+  switch (anim) {
+    case 0:
       currentPalette = PartyColors_p;
       pix1 = ColorFromPalette( currentPalette , colorIndex, 255, blend);
       clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
       colorIndex = colorIndex + clrfreq;
       lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
       break;
-    case 2:
+    case 1:
       currentPalette = LavaColors_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
       colorIndex = colorIndex + clrfreq;
       lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
       break;
-    case 3:
+    case 2:
       currentPalette = OceanColors_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
       colorIndex = colorIndex + clrfreq;
       lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
       break;
-    case 4:
+    case 3:
       currentPalette = ChristmasColors_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
       colorIndex = colorIndex + clrfreq;
       lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
       break;
-    case 5:
+    case 4:
       sin_color(pixhsv_wht, (ovrfreq < 0) ? 10:ovrfreq);  // freq must be high(10) for starfield sim
       pix1 = pixhsv_wht;
       lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
       break;
-    case 6:
+    case 5:
       shift_color(pixhsv_col, (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq);
       pix1 = pixhsv_col;
       lpdelay = (ovrdel < 10) ? DEF_DEL:ovrdel;
@@ -648,8 +798,8 @@ void wifi_server_process()
     if (rxbuf[0] == '?') 
     {
       // remote status request
-      sprintf(infostr, "animation=%d, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, leds=%d, ver=%d, bright=%d [?,n,o,w]\n", 
-        anim_no, ovrfreq, ovrdel, ovrcyc, num_leds, ver, brightness);
+      sprintf(infostr, "animation=%d, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, leds=%d, ver=%d, bright=%d, mode=%u [?,n,o,b,w,r]\n", 
+        anim_no, ovrfreq, ovrdel, ovrcyc, num_leds, ver, brightness, mode);
       wifi_client.write(infostr, strlen(infostr));
       Serial.println(infostr);
     } 
@@ -697,12 +847,31 @@ void wifi_server_process()
       sprintf(infostr, "OK wrote config\n");
       wifi_client.write(infostr, strlen(infostr));
     }
+    else if (rxbuf[0] == 'R' or rxbuf[0] == 'r')
+    {
+      mode |= MODE_PLAY_RANDOM;
+      sprintf(infostr, "OK randomize\n");
+      wifi_client.write(infostr, strlen(infostr));
+    } 
+    else if (rxbuf[0] == 'L' or rxbuf[0] == 'l')
+    {
+      mode &= ~MODE_PLAY_RANDOM;
+      sprintf(infostr, "OK linear\n");
+      wifi_client.write(infostr, strlen(infostr));
+    }        
+    else if (rxbuf[0] == 'M' or rxbuf[0] == 'm')
+    {
+      mode = atoi(infostr+1);
+      sprintf(infostr, "OK mode=%u\n", mode);
+      wifi_client.write(infostr, strlen(infostr));
+    }        
     else 
     {
         // intepret as animation#
         anim_no = atoi(infostr);
         sprintf(infostr, "OK animation=%d\n", anim_no);
         wifi_client.write(infostr, strlen(infostr));
+        anim_changed = 1;
     }
 #endif
   }// while
