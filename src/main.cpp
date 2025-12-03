@@ -1,24 +1,37 @@
- #include <Arduino.h>
+#include <Arduino.h>
 #include <Preferences.h>
 #include <FastLED.h>
-//#if defined (NET)
-#include "WiFi.h"
-//#endif
 
-//#if defined (GRAPH)
-//#include <Arduino_GFX_Library.h>
-//#endif
+#define NET
+//#define GRAPH
+#define U8G
+
+#if defined (NET)
+#include "WiFi.h"
+#endif
+
+
+#if defined (GRAPH)
+#if defined (U8G)
+#include <U8g2lib.h>
+#include <Wire.h>
+#else // U8G
+#include <Arduino_GFX_Library.h>
+#endif // U8G
+#endif // GRAPH
+
+
 
 //#define S3MINIPRO
 //#define S2MINI
 #define S3ZERO
-#define NET
-//#define GRAPH
-#define LOCAL_IP (136)
+//#define C3OLED
+
+#define LOCAL_IP (134)
 #define DEF_BRIGHTNESS  (128)
 //#define EN_PIN      (12)
 //#define DEB_PIN     (42)
-#define BUT_PIN     (0)   //0 for ESP32-S3ZERO, 47 on S3MINPO, 9 for SEED C3, 0 for s2-mini
+
 #define MAX_NUM_LEDS    (1024)
 #define NUM_LEDS_DEF (32)
 #define LED_TYPE    WS2812
@@ -31,6 +44,9 @@
 #define BASE_PONG (7)
 // 14 solid
 #define BASE_SOLID (23)
+#define NUM_SCROLL (BASE_PONG-BASE_SCROLL)
+#define NUM_PONG (BASE_SOLID-BASE_PONG)
+#define NUM_SOLID (NUM_ANI - BASE_SOLID + 1)
 #define NUM_ANI (36)
 
 #define DEF_CLRFREQ (3)
@@ -44,7 +60,13 @@
 #define NUM_LEDS_AUX    (1)
 #define LED_TYPE_AUX    WS2812
 #define COLOR_ORDER_AUX RGB
+#define BUT_PIN     (0)   //0 for ESP32-S3ZERO, 47 on S3MINPO, 9 for SEED C3, 0 for s2-mini
 #endif // S3ZERO
+
+#if defined (C3OLED)
+#define LED_PIN     (2) 
+#define BUT_PIN     (9)   //0 for ESP32-S3ZERO, 47 on S3MINPO, 9 for SEED C3, 0 for s2-mini
+#endif // 
 
 
 // net
@@ -77,14 +99,22 @@ t_net_status net_status = { 0, 0, 0, 0 };
 #endif // NET
 
 
-
 #ifdef GRAPH
+#ifdef U8G
+char printbuf[128];
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, 6, 5);
+int width = 72;
+int height = 40;
+int xOffset = 30; // = (132-w)/2
+int yOffset = 12; // = (64-h)/2
+#else // U8G
 char printbuf[128];
 // tft
 Arduino_DataBus *bus = create_default_Arduino_DataBus();
 Arduino_GFX *gfx = new Arduino_GC9107(bus, DF_GFX_RST, 1 /* rotation */, true /* IPS */);
 #define GFX_BL DF_GFX_BL  // default backlight pin, you may replace DF_GFX_BL to actual backlight pin
-#endif
+#endif // U8G
+#endif // GRAPH
 
 
 #define MAKPIX_SCL(r,g,b,scl) ( ( (unsigned)(r*scl) << 16 ) | ( (unsigned)(g*scl) << 8 ) | ( (unsigned)(b*scl) ) )
@@ -130,25 +160,30 @@ extern const TProgmemRGBPalette16 solidcolor_p FL_PROGMEM =
     0x00FF00, 0x00FF00, 0x00FF00, 0x00FF00
 };
 
-#define MODE_PLAY_LINEAR 0
 #define MODE_PLAY_RANDOM 1
+#define MODE_BYP_SCROLL 2
+#define MODE_BYP_PONG 4
+#define MODE_BYP_SOLID 8
 
 // persistence
 Preferences prefs;  // global instance
 
 // global
 unsigned num_leds = NUM_LEDS_DEF;
-int anim_no = BASE_SOLID;
+unsigned anim_no = BASE_SOLID;
 int timer_ct = 0;
 int ovrfreq = -1;
 int ovrdel = -1;
 int ovrcyc = -1;
-int ver = 4;
+int ver = 5;
 int storecount = 0;
 int brightness = DEF_BRIGHTNESS;
-uint32_t mode = MODE_PLAY_LINEAR;
+uint32_t mode = 0;
 int anim_changed = 1;
 
+
+// proto
+void draw_text(String txt1, String txt2, String txt3);
 void gfx_init(void);
 void shift_color(CHSV& incolor, int color_freq);
 void ani_scroll(unsigned changed);
@@ -156,7 +191,7 @@ void ani_pong(unsigned changed);
 void ani_solid(unsigned changed);
 void ani_blank(unsigned changed);
 void sin_color(CHSV& incolor, int color_freq);
-void network_sm();
+int network_sm();
 void net_connect(String ssid);
 void disp_net_status(void);
 void wifi_server_process();
@@ -165,6 +200,7 @@ void check_client_connection();
 void init_leds();
 void readfs();
 void putfs();
+unsigned change_anim(unsigned anim_no, unsigned mode);
 
 
 
@@ -187,8 +223,9 @@ void setup()
 
 #if defined(GRAPH)
   gfx_init();
-  draw_text("Starting....", "Hello");
+  draw_text("Starting..", "", "");
 #endif
+
 
 
   // initialize wifi
@@ -237,8 +274,6 @@ void setup()
 
 void init_leds()
 {
-
-
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, num_leds).setCorrection( TypicalLEDStrip );
 
 #if defined(S3ZERO)
@@ -274,7 +309,7 @@ void readfs()
   ovrdel = prefs.getInt("ovrdel", -1);  
   ovrcyc = prefs.getInt("ovrcyc", -1);
   brightness = prefs.getInt("brightness", DEF_BRIGHTNESS);
-  mode = prefs.getUInt("mode", MODE_PLAY_LINEAR);
+  mode = prefs.getUInt("mode", 0);
 
 
   Serial.printf("readfs: storect=%u, storedver=%u, leds=%u, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, brightness=%d\n", 
@@ -282,6 +317,7 @@ void readfs()
 }
 
 
+char b1[16], b2[16], b3[16];
 
 void loop()
 {
@@ -296,8 +332,26 @@ void loop()
   else 
     ani_solid(anim_changed);
 
-  anim_changed = 0;
 
+  #ifdef GRAPH
+    if (anim_changed)
+    {
+      if (net_status.stat == NET_STAT_CONN)
+        sprintf(b1, "a%d i%d", anim_no, LOCAL_IP);
+      else if (net_status.stat == NET_STAT_CLIENT)
+        sprintf(b1, "a%d I%d", anim_no, LOCAL_IP);
+      else  
+        sprintf(b1, "a%d i%s", anim_no, "err");
+
+      sprintf(b2, "v%d b%d", ver, brightness);
+      sprintf(b3, "m%d n%d", mode, num_leds);
+      draw_text(b1, b2, b3);
+      Serial.printf("%s %s %s", b1, b2, b3);
+    }
+  #endif
+
+
+  anim_changed = 0;
 
   #ifdef BUT_PIN
     if (digitalRead(BUT_PIN) == 0 && but_ct != -10)
@@ -305,17 +359,9 @@ void loop()
       but_ct = but_ct + 1;
       if (but_ct > BUT_THRESH)
       {
-        if (mode & MODE_PLAY_RANDOM)
-          anim_no = random16(NUM_ANI) + 1;
-        else
-          ++anim_no;
-        if (anim_no > NUM_ANI) anim_no = 1;
+        anim_no = change_anim(anim_no, mode);
         anim_changed = 1;
-        //Serial.printf("button pressed, animation=%d\n", anim_no);
-#if defined (GRAPH)
-        sprintf(printbuf,"anim=%d\n", anim_no);
-        draw_text("change anim", printbuf);
-#endif        
+        Serial.printf("button pressed, animation=%d\n", anim_no);
         but_ct = -BUT_THRESH;
       }
     }
@@ -341,17 +387,65 @@ void loop()
   int cycthrs = (ovrcyc < 0) ? DEF_CYC:ovrcyc;
   if ( ( (timer_ct % cycthrs) ==0) && anim_no > 0)
   {
-    if (mode & MODE_PLAY_RANDOM)
-      anim_no = random16(NUM_ANI) + 1;
-    else
-      ++anim_no;
-    if (anim_no > NUM_ANI) anim_no = 1;  
+    anim_no = change_anim(anim_no, mode);
     anim_changed = 1;
   }
+
 
   FastLED.delay(1);
 }
 
+
+unsigned change_anim(unsigned anim_no, unsigned mode)
+{
+//ssssssssssssssssssssssssss
+//#define BASE_SCROLL (1)
+//#define BASE_PONG (7)
+//#define BASE_SOLID (23)
+
+
+  if ( (mode & MODE_BYP_SCROLL) && (mode & MODE_BYP_PONG) && (mode & MODE_BYP_SOLID) )
+    return BASE_SOLID;
+  
+  
+  unsigned anim_cat = 0;
+  unsigned num_cat = 0;
+  if (mode & MODE_PLAY_RANDOM)
+  {
+    if ((mode & MODE_BYP_SCROLL) == 0)
+      num_cat += (NUM_SCROLL);
+    if ((mode & MODE_BYP_PONG) == 0)
+      num_cat += (NUM_PONG);
+    if ((mode & MODE_BYP_SOLID) == 0)
+      num_cat += (NUM_SOLID);
+
+    anim_cat = (random() % num_cat) + 1;
+
+    if (anim_cat < BASE_PONG &&  ((mode & MODE_BYP_SCROLL) == 0) ) return anim_cat;
+    if (mode & MODE_BYP_SCROLL)  anim_cat += NUM_SCROLL;
+    if (anim_cat < BASE_SOLID && ((mode & MODE_BYP_PONG) == 0) )   return anim_cat;
+    if (mode & MODE_BYP_PONG)  anim_cat += NUM_PONG;
+    return anim_cat;
+  }
+  else
+  {
+    anim_cat = anim_no + 1;
+    if (anim_cat > NUM_ANI) anim_cat = 1;
+    if (anim_cat == BASE_SCROLL)
+        if (mode & MODE_BYP_SCROLL)  anim_cat = BASE_PONG;
+    if (anim_cat == BASE_PONG)
+        if (mode & MODE_BYP_PONG)    anim_cat = BASE_SOLID;
+    if (anim_cat == BASE_SOLID)
+        if (mode & MODE_BYP_SOLID)   anim_cat = BASE_SCROLL;
+    if (anim_cat == BASE_SCROLL)
+        if (mode & MODE_BYP_SCROLL)  anim_cat = BASE_PONG;
+
+
+    return anim_cat;
+
+  }
+
+}
 
 void ani_blank(unsigned changed)
 {
@@ -492,7 +586,10 @@ void ani_solid(unsigned changed)
     leds[j] = pix1;
   }
   FastLED.show();
+#ifdef NUM_LEDS_AUX  
   leds_aux[0] = pix1;
+#endif
+ 
 }
 
 
@@ -587,7 +684,9 @@ void ani_pong(unsigned changed)
     if (startIndex >= num_leds) startIndex = 0;
   }
   lpdelay = 1;
+#ifdef NUM_LEDS_AUX  
   leds_aux[0] = 0xFFFFFF;
+#endif  
 }
 
 void ani_scroll(unsigned changed)
@@ -659,7 +758,9 @@ void ani_scroll(unsigned changed)
   for (int j=0; j<startIndex; ++j)    leds[n++] = leds2[j];
   FastLED.show();
   startIndex = startIndex - 1;  if (startIndex < 0) startIndex += num_leds;
+#ifdef NUM_LEDS_AUX  
   leds_aux[0] = pix1;
+#endif
 }
 
 void shift_color(CHSV& incolor, int color_freq)
@@ -695,7 +796,7 @@ void sin_color(CHSV& incolor, int color_freq)
 
 #if defined (NET)
 
-void network_sm() {
+int network_sm() {
   int test_x;
   int ch;
 
@@ -738,6 +839,7 @@ void network_sm() {
   ch += set_if_changed(&net_status.client_conn, wifi_client.connected());
 
   if (ch > 0) disp_net_status();
+  return ch;
 }
 
 int set_if_changed(int *val_to_set, int val) {
@@ -889,11 +991,11 @@ void disp_net_status(void) {
 
 //  sprintf(infostr, "ssid=%s\nnet_stat=%d\nloc_ip=%s\ncli_ip=%s\nsrv_hascli=%d\ncli_av=%d\ncli_con=%d \n",
 //          "netgear777", net_status.stat, loc_ipaddr_str.c_str(), rem_ipaddr_str.c_str(), net_status.server_hasclient, net_status.client_avail, net_status.client_conn);
-#ifdef GRAPH
-  sprintf(infostr, "%s\stat=%d\n%s, %s\nst=%d,%d,%d\n",
-          "netgear777", net_status.stat, loc_ipaddr_str.c_str(), rem_ipaddr_str.c_str(), net_status.server_hasclient, net_status.client_avail, net_status.client_conn);
-  draw_text("stat      ", infostr);
-#endif
+//#ifdef GRAPH
+//  sprintf(infostr, "%s\stat=%d\n%s, %s\nst=%d,%d,%d\n",
+//          "netgear777", net_status.stat, loc_ipaddr_str.c_str(), rem_ipaddr_str.c_str(), net_status.server_hasclient, net_status.client_avail, net_status.client_conn);
+//  draw_text("stat      ", infostr);
+//#endif
 
 }
 
@@ -909,7 +1011,7 @@ void check_client_connection() {
       wifi_client = wifi_server.available();
       rem_ipaddr_str = wifi_client.remoteIP().toString();
       Serial.printf("Connection accepted from %s\n", rem_ipaddr_str.c_str());
-      net_status.stat = 3;
+      net_status.stat = NET_STAT_CLIENT;
     }
     disp_net_status();
   }
@@ -919,32 +1021,40 @@ void net_connect(String ssid) {
   int try_ct = 0;
 
   Serial.printf("Connecting to WiFi ssid=%s", ssid.c_str());
-  sprintf(infostr, "connect: %s", ssid.c_str());
+  sprintf(infostr, "%s", ssid.c_str());
 #ifdef GRAPH
-  draw_text("info", infostr);
+  char b1[8];
+  sprintf(b1, "ip=%d", LOCAL_IP);
+  draw_text("connect", infostr, b1);
 #endif
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, "princess777");
 
-  while (WiFi.status() != WL_CONNECTED && ++try_ct < WIFI_CONNECT_TIMEOUT_MS * 0.01) {
+  while (WiFi.status() != WL_CONNECTED && ++try_ct < WIFI_CONNECT_TIMEOUT_MS * 0.01) 
+  {
     Serial.print('.');
     delay(50);
   }
   Serial.println("");
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED) 
+  {
     loc_ipaddr_str = WiFi.localIP().toString();
     sprintf(infostr, "ssid=%s\nip=%s", ssid.c_str(), loc_ipaddr_str.c_str());
     Serial.println(infostr);
 #ifdef GRAPH
-    draw_text("connected", infostr);
+    char b1[8];
+    sprintf(b1, "ip=%d", LOCAL_IP);
+    draw_text("connect", "success", b1);
 #endif    
-    net_status.stat = 1;
-  } else {
-    sprintf(infostr, "stat=%d", WiFi.status());
+    net_status.stat = NET_STAT_CONN;
+  } 
+  else 
+  {
+    sprintf(infostr, "st=%d", WiFi.status());
     Serial.println(String("Error") + infostr);
 #ifdef GRAPH
-    draw_text("Error", infostr);
+    draw_text("connect", "error", infostr);
 #endif    
   }
 }
@@ -1051,9 +1161,9 @@ String net_scan() {
   }
   Serial.println("");
   sprintf(hdr, "%d found:", n);
-#ifdef GRAPH
-  draw_text(hdr, s_infostr);
-#endif
+//#ifdef GRAPH
+//  draw_text(hdr, s_infostr);
+//#endif
   if (n > 0) retval = WiFi.SSID(0);
 
   // Delete the scan result to free memory for code below.
@@ -1070,24 +1180,56 @@ String net_scan() {
 
 void gfx_init(void) {
 
-#ifdef GFX_EXTRA_PRE_INIT
-  GFX_EXTRA_PRE_INIT();
-#endif
-  // Init Display
-  if (!gfx->begin()) {
-    Serial.println("gfx->begin() failed!");
-  }
-  gfx->fillScreen(BLACK);
-  // backlight
-#ifdef GFX_BL
-  pinMode(GFX_BL, OUTPUT);
-  digitalWrite(GFX_BL, HIGH);
+#ifdef U8G
+  delay(1000);
+  u8g2.begin();
+  u8g2.setContrast(255); // set contrast to maximum 
+  u8g2.setBusClock(400000); //400kHz I2C 
+  // tf: full font / all glyphs includedtr: Transparent background
+  // ncen = new centry schoolbook, helv, courier, etc
+  
+  
+  u8g2.setFont(u8g2_font_helvB14_tf);
+  //u8g2.setFont(u8g2_font_courB12_tf);
+  //u8g2.setFont(u8g2_font_ncenB12_tr);
+  //u8g2.setFont(u8g2_font_ncenB10_tr);
+  //u8g2.setFont(u8g2_font_ncenB08_tf);
+#else
+  #ifdef GFX_EXTRA_PRE_INIT
+    GFX_EXTRA_PRE_INIT();
+  #endif
+    // Init Display
+    if (!gfx->begin()) {
+      Serial.println("gfx->begin() failed!");
+    }
+    gfx->fillScreen(BLACK);
+    // backlight
+  #ifdef GFX_BL
+    pinMode(GFX_BL, OUTPUT);
+    digitalWrite(GFX_BL, HIGH);
+  #endif
 #endif
 }
 
 
 
-void draw_text(String txt1, String txt2) {
+void draw_text(String txt1, String txt2, String txt3) 
+{
+
+#ifdef U8G
+  u8g2.clearBuffer(); // clear the internal memory
+
+
+  //u8g2.drawFrame(xOffset+0, yOffset+0, width, height); //draw a frame around the border
+  u8g2.setCursor(xOffset+0, yOffset+24);
+  u8g2.printf(txt1.c_str());
+  u8g2.setCursor(xOffset+0, yOffset+38);
+  u8g2.printf(txt2.c_str());
+  u8g2.setCursor(xOffset+0, yOffset+52);
+  u8g2.printf(txt3.c_str());
+  u8g2.sendBuffer(); // transfer internal memory to the display     
+#else // U8G
+
 #define SPC (8)
 #define TXT_SZ (1)
 #define SPC2 (16)
@@ -1107,5 +1249,6 @@ void draw_text(String txt1, String txt2) {
   gfx->setCursor(0, SPC + 1);
   gfx->setTextColor(WHITE, BLACK);
   gfx->println(txt2);
+#endif // U8G  
 }
 #endif // GRAPH

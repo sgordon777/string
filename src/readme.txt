@@ -41,8 +41,8 @@ todo:
   x -more pong animations v4
   x -randomize v4
   -change "cycles" to be based time 
-  -c3-OLD board support
-  -Way to select subset of patterns
+  x -c3-OLD board support
+  x -Way to select subset of patterns
 
 
 */
