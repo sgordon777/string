@@ -43,6 +43,7 @@ todo:
   -change "cycles" to be based time 
   x -c3-OLD board support
   x -Way to select subset of patterns
-
+  x remove "ovr" scheme, give eacj value defai;tested, 6
+  x add "start" param to start on a particular animation, 6
 
 */

@@ -3,7 +3,9 @@
 #include <FastLED.h>
 
 #define NET
-//#define GRAPH
+#ifdef ARDUINO_ESP32_C3_DEVKITM_1
+#define GRAPH
+#endif
 #define U8G
 
 #if defined (NET)
@@ -24,10 +26,10 @@
 
 //#define S3MINIPRO
 //#define S2MINI
-#define S3ZERO
-//#define C3OLED
+//#define S3ZERO
+#define C3OLED
 
-#define LOCAL_IP (134)
+#define LOCAL_IP (132)
 #define DEF_BRIGHTNESS  (128)
 //#define EN_PIN      (12)
 //#define DEB_PIN     (42)
@@ -169,13 +171,14 @@ extern const TProgmemRGBPalette16 solidcolor_p FL_PROGMEM =
 Preferences prefs;  // global instance
 
 // global
+int start = BASE_SOLID;
 unsigned num_leds = NUM_LEDS_DEF;
-unsigned anim_no = BASE_SOLID;
+unsigned anim_no = start;
 int timer_ct = 0;
-int ovrfreq = -1;
-int ovrdel = -1;
-int ovrcyc = -1;
-int ver = 5;
+int freq = DEF_CLRFREQ;
+int del = DEF_DEL;
+int cyc = DEF_CYC;
+int ver = 6;
 int storecount = 0;
 int brightness = DEF_BRIGHTNESS;
 uint32_t mode = 0;
@@ -220,6 +223,8 @@ void setup()
   }  
 
   readfs();
+
+  anim_no = start;
 
 #if defined(GRAPH)
   gfx_init();
@@ -289,15 +294,16 @@ void putfs()
   prefs.putUInt("storecount", storecount);
   prefs.putUInt("ver", ver);
   prefs.putUInt("num_leds", num_leds);
-  prefs.putInt("ovrfreq", ovrfreq);
-  prefs.putInt("ovrdel", ovrdel);
-  prefs.putInt("ovrcyc", ovrcyc);
+  prefs.putInt("freq", freq);
+  prefs.putInt("del", del);
+  prefs.putInt("cyc", cyc);
+  prefs.putInt("start", start);
   prefs.putInt("brightness", brightness);
   prefs.putUInt("mode", mode);
   
 
-  Serial.printf("putfs: storect=%u, storedver=%u, leds=%u, ovrfreq=%d, ovrdel=%d, ovrcyc=%d\n", 
-    storecount, ver, num_leds, ovrfreq, ovrdel, ovrcyc);
+  Serial.printf("putfs: storect=%u, storedver=%u, leds=%u, freq=%d, del=%d, cyc=%d, brigt=%d,start=%d\n", 
+    storecount, ver, num_leds, freq, del, cyc, brightness, start);
 }
 
 void readfs()
@@ -305,15 +311,23 @@ void readfs()
   storecount = prefs.getUInt("storecount", 0);  
   uint32_t storedver = prefs.getUInt("ver", 0);  
   num_leds = prefs.getUInt("num_leds", NUM_LEDS_DEF);  
-  ovrfreq = prefs.getInt("ovrfreq", -1);  
-  ovrdel = prefs.getInt("ovrdel", -1);  
-  ovrcyc = prefs.getInt("ovrcyc", -1);
+  freq = prefs.getInt("freq", DEF_CLRFREQ);  
+  del = prefs.getInt("del", DEF_DEL);  
+  cyc = prefs.getInt("cyc", DEF_CYC);
+  start = prefs.getInt("start", BASE_SOLID);
   brightness = prefs.getInt("brightness", DEF_BRIGHTNESS);
   mode = prefs.getUInt("mode", 0);
 
+  // legacy issue, used to be -1 to signal default
+  freq = freq==-1 ? DEF_CLRFREQ:freq;
+  del = del==-1 ? DEF_DEL:del;
+  cyc = cyc==-1 ? DEF_CYC:cyc;
 
-  Serial.printf("readfs: storect=%u, storedver=%u, leds=%u, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, brightness=%d\n", 
-    storecount, storedver, num_leds, ovrfreq, ovrdel, ovrcyc, brightness);
+
+
+
+  Serial.printf("readfs: storect=%u, storedver=%u, leds=%u, freq=%d, del=%d, cyc=%d, bright=%d, start=%d\n", 
+    storecount, storedver, num_leds, freq, del, cyc, brightness, start);
 }
 
 
@@ -384,8 +398,7 @@ void loop()
   ++timer_ct;
   
   // auto increment
-  int cycthrs = (ovrcyc < 0) ? DEF_CYC:ovrcyc;
-  if ( ( (timer_ct % cycthrs) ==0) && anim_no > 0)
+  if ( ( (timer_ct % cyc) ==0) && anim_no > 0)
   {
     anim_no = change_anim(anim_no, mode);
     anim_changed = 1;
@@ -715,40 +728,36 @@ void ani_scroll(unsigned changed)
     case 0:
       currentPalette = PartyColors_p;
       pix1 = ColorFromPalette( currentPalette , colorIndex, 255, blend);
-      clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
-      colorIndex = colorIndex + clrfreq;
-      lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
+      colorIndex = colorIndex + freq;
+      lpdelay = del;
       break;
     case 1:
       currentPalette = LavaColors_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
-      clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
-      colorIndex = colorIndex + clrfreq;
-      lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
+      colorIndex = colorIndex + freq;
+      lpdelay = del;
       break;
     case 2:
       currentPalette = OceanColors_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
-      clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
-      colorIndex = colorIndex + clrfreq;
-      lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
+      colorIndex = colorIndex + freq;
+      lpdelay = del;
       break;
     case 3:
       currentPalette = ChristmasColors_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
-      clrfreq = (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq;
-      colorIndex = colorIndex + clrfreq;
-      lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
+      colorIndex = colorIndex + freq;
+      lpdelay = del;
       break;
     case 4:
-      sin_color(pixhsv_wht, (ovrfreq < 0) ? 10:ovrfreq);  // freq must be high(10) for starfield sim
+      sin_color(pixhsv_wht, 3.33333 * freq);  // freq must be high(10) for starfield sim
       pix1 = pixhsv_wht;
-      lpdelay = (ovrdel < 0) ? DEF_DEL:ovrdel;
+      lpdelay = del;
       break;
     case 5:
-      shift_color(pixhsv_col, (ovrfreq < 0) ? DEF_CLRFREQ:ovrfreq);
+      shift_color(pixhsv_col, freq);
       pix1 = pixhsv_col;
-      lpdelay = (ovrdel < 10) ? DEF_DEL:ovrdel;
+      lpdelay = del;
       break;
   }
   leds2[startIndex] = pix1;
@@ -884,11 +893,17 @@ void wifi_server_process()
 #endif
 
 /*
-  ? = status
-  N = set animatino
-  freq=N = set freq
-  del=N = set del
-  cycdel=N = set switching delay
+  ?      : get status
+  {val}  : set animatinon
+  b{val} : set brightness
+  n{val} : set number of lights
+  m{val} : set mode
+  f{val} : frequency for anumations: lower makes gradients repeat more often
+  d{val} : delay for gradients
+  c{val} : number of animation cycles to wait before switching to next animation
+  s{val} : start at animation $val
+  w      : write settings to persistent memeory   
+
 */
 
 #if 1
@@ -900,26 +915,10 @@ void wifi_server_process()
     if (rxbuf[0] == '?') 
     {
       // remote status request
-      sprintf(infostr, "animation=%d, ovrfreq=%d, ovrdel=%d, ovrcyc=%d, leds=%d, ver=%d, bright=%d, mode=%u [?,n,o,b,w,r]\n", 
-        anim_no, ovrfreq, ovrdel, ovrcyc, num_leds, ver, brightness, mode);
+      sprintf(infostr, "anim#=%d, bright=%d, leds=%d, mode=%u freq=%d, del=%d, cyc=%d, start=%d, ver=%d \n [ ? | w | {x} | b{x} | n{x} | m{x} | f{x} | d{x} | c{x} ]\n", 
+                        anim_no,  brightness,num_leds,mode,   freq,    del,    cyc,    start,    ver);
       wifi_client.write(infostr, strlen(infostr));
       Serial.println(infostr);
-    } 
-    else if (rxbuf[0] == 'O' || rxbuf[0] == 'o' )
-    {
-      // remote status request
-      Serial.printf("override...\n");
-      int chk = sscanf(infostr+1, "%d,%d,%d", &ovrfreq, &ovrdel, &ovrcyc );
-      if (chk)
-      {
-        sprintf(infostr, "OK freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
-      }
-      else
-      {
-        sprintf(infostr, "ERR freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
-      }
-      Serial.printf("OK freq=%d, del=%d, cyc=%d\n", ovrfreq, ovrdel, ovrcyc);
-      wifi_client.write(infostr, strlen(infostr));
     } 
     else if (rxbuf[0] == 'N' || rxbuf[0] == 'n' )
     {
@@ -949,24 +948,36 @@ void wifi_server_process()
       sprintf(infostr, "OK wrote config\n");
       wifi_client.write(infostr, strlen(infostr));
     }
-    else if (rxbuf[0] == 'R' or rxbuf[0] == 'r')
-    {
-      mode |= MODE_PLAY_RANDOM;
-      sprintf(infostr, "OK randomize\n");
-      wifi_client.write(infostr, strlen(infostr));
-    } 
-    else if (rxbuf[0] == 'L' or rxbuf[0] == 'l')
-    {
-      mode &= ~MODE_PLAY_RANDOM;
-      sprintf(infostr, "OK linear\n");
-      wifi_client.write(infostr, strlen(infostr));
-    }        
     else if (rxbuf[0] == 'M' or rxbuf[0] == 'm')
     {
       mode = atoi(infostr+1);
       sprintf(infostr, "OK mode=%u\n", mode);
       wifi_client.write(infostr, strlen(infostr));
-    }        
+    }
+    else if (rxbuf[0] == 'F' || rxbuf[0] == 'f' )
+    {
+        freq = atoi(infostr+1);
+        sprintf(infostr, "OK freq=%d\n", freq);
+        wifi_client.write(infostr, strlen(infostr));
+    }
+    else if (rxbuf[0] == 'D' || rxbuf[0] == 'd' )
+    {
+        del = atoi(infostr+1);
+        sprintf(infostr, "OK del=%d\n", del);
+        wifi_client.write(infostr, strlen(infostr));
+    }
+    else if (rxbuf[0] == 'C' || rxbuf[0] == 'c' )
+    {
+        cyc = atoi(infostr+1);
+        sprintf(infostr, "OK cyc=%d\n", cyc);
+        wifi_client.write(infostr, strlen(infostr));
+    }
+    else if (rxbuf[0] == 'S' || rxbuf[0] == 's' )
+    {
+        start = atoi(infostr+1);
+        sprintf(infostr, "OK start=%d\n", start);
+        wifi_client.write(infostr, strlen(infostr));
+    }
     else 
     {
         // intepret as animation#
