@@ -1,4 +1,4 @@
-#define SW_VERSION (9)
+#define SW_VERSION (10)
 // ************** features **************
 #define NET
 //#define GRAPH
@@ -8,12 +8,12 @@
 #define S3ZERO
 //#define C3OLED
 // ************** parameters **************
-#define LOCAL_IP (133)
+#define LOCAL_IP (134)
 #define DEF_BRIGHTNESS  (128)
 #define MAX_NUM_LEDS    (1024)
 #define NUM_LEDS_DEF (32)
 #define LED_TYPE WS2812
-#define COLOR_ORDER RGB // RGB for outside lights, GRB for tree lights, RGB for internal ws2812
+#define COLOR_ORDER GRB // RGB for outside lights, GRB for tree lights, RGB for internal ws2812
 #define BUT_THRESH (10)
 #define U8G
 
@@ -118,8 +118,71 @@ Arduino_GFX *gfx = new Arduino_GC9107(bus, DF_GFX_RST, 1 /* rotation */, true /*
 #endif // GRAPH
 
 
-#define MAKPIX_SCL(r,g,b,scl) ( ( (unsigned)(r*scl) << 16 ) | ( (unsigned)(g*scl) << 8 ) | ( (unsigned)(b*scl) ) )
-#define MAKPIX(r,g,b) ( ( r << 16 ) | ( g << 8 ) | ( b ) )
+CRGB ORANGE_1 { (0xff), (0x40), (0x00) };
+CRGB GOLD { (0xff), (0xA0), (0x00) };
+CRGB CRIMSON_RED { (0xc8), (0x00), (0x0a) };
+CRGB ORANGE_3 { (0xff), (0x80), (0x00) };
+CRGB MOSS_GREEN { (0x1e), (0x64), (0x00) };
+CRGB CANDY_GREEN { (0x00), (0xff), (0x1e) };
+CRGB RED_1 { (0xff), (0x00), (0x00) };
+CRGB GREEN_1 { (0x00), (0xff), (0x00) };
+CRGB BLUE_1 { (0x00), (0x00), (0xff) };
+CRGB WHITE_1 { (0xff), (0xff), (0xff) };
+CRGB COPPER { {0x87}, {0x28}, {0x00}};
+CRGB MAGNENTA_1 { (0xff), (0x00), (0xff) };
+CRGB YELLOW_1 { (0xff), (0xff), (0x00) };
+CRGB CYAN_1 { (0x00), (0xff), (0xff) };
+
+
+
+#ifdef SEAS_HALLOWEEN
+#define SEAS_HUE_WAV HUE_ORANGE
+#define SEAS_PAL_1 PartyColors_p
+#define SEAS_PAL_2 FallCoolors_rgb_p
+#define SEAS_PAL_3 HeatColors_p
+#define SEAS_PAL_4 HalloweenColors_rgb_p
+#define SEAS_PONG_COL1 ORANGE_1
+#define SEAS_PONG_COL2 GOLD
+#define SEAS_PONG_COL3 COPPER
+#define SEAS_PONG_COL4 CANDY_GREEN
+#define SEAS_SOLID_COL1 ORANGE_1
+#define SEAS_SOLID_COL2 GOLD
+#define SEAS_SOLID_COL3 CRIMSON_RED
+#define SEAS_SOLID_COL4 ORANGE_3
+#define SEAS_SOLID_COL5 MOSS_GREEN
+#define SEAS_SOLID_COL6 ORANGE_1
+#define SEAS_SOLID_COL7 CANDY_GREEN
+#else
+#define SEAS_HUE_WAV HUE_PURPLE
+#define SEAS_PAL_1 PartyColors_p
+#define SEAS_PAL_2 LavaColors_p
+#define SEAS_PAL_3 OceanColors_p
+#define SEAS_PAL_4 ChristmasColors_p
+#define SEAS_PONG_COL1 RED_1
+#define SEAS_PONG_COL2 GREEN_1
+#define SEAS_PONG_COL3 BLUE_1
+#define SEAS_PONG_COL4 WHITE_1
+#define SEAS_SOLID_COL1 RED_1
+#define SEAS_SOLID_COL2 GREEN_1
+#define SEAS_SOLID_COL3 BLUE_1
+#define SEAS_SOLID_COL4 WHITE_1
+#define SEAS_SOLID_COL5 MAGNENTA_1
+#define SEAS_SOLID_COL6 YELLOW_1
+#define SEAS_SOLID_COL7 CYAN_1
+#endif
+
+
+//#define MAKPIX_SCL(r, g, b, scl) ( ( (unsigned)(r*scl) << 16 ) | ( (unsigned)(g*scl) << 8 ) | ( (unsigned)(b*scl) ) )
+//#define MAKPIX(r, g, b) ( ( r << 16 ) | ( g << 8 ) | ( b ) )
+
+CRGB MAKPIX_SCL(CRGB clr, float scl)
+{
+    return CRGB(
+        (uint8_t)(clr.r * scl),
+        (uint8_t)(clr.g * scl),
+        (uint8_t)(clr.b * scl)
+    );
+}
 
 CRGB leds[MAX_NUM_LEDS];
 #if defined(LED_PIN_AUX)
@@ -389,9 +452,9 @@ void loop()
     {
       // special case, set to solid white
       for (int j=0; j<num_leds; ++j) 
-        leds[j] = MAKPIX(255,255,255);
+        leds[j] = WHITE_1;
 #if defined (LED_PIN_AUX)        
-      leds_aux[0] = MAKPIX(255,255,255);
+      leds_aux[0] = WHITE_1;
 #endif
     }
   }
@@ -580,6 +643,7 @@ void ani_solid(unsigned changed)
     }
   }
 
+
   for (int j=0; j<num_leds; ++j) 
   {
     // modes 1-4, palleted colors
@@ -587,19 +651,19 @@ void ani_solid(unsigned changed)
     {
       case 0:
       case 8:
-        pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
+        pix1 = MAKPIX_SCL(SEAS_SOLID_COL1,y[j]);
         break;
       case 1:
       case 9:
-        pix1 = MAKPIX_SCL(0xff,0xA0,0x00,y[j]);
+        pix1 = MAKPIX_SCL(SEAS_SOLID_COL2,y[j]);
         break;
       case 2:
       case 10:
-        pix1 = MAKPIX_SCL(0xc8,0x00,0x0a,y[j]);  // crimson red
+        pix1 = MAKPIX_SCL(SEAS_SOLID_COL3,y[j]);  // crimson red
         break;
       case 3:
       case 11:
-        pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
+        pix1 = MAKPIX_SCL(SEAS_SOLID_COL4,y[j]);
         break;
       case 4:
       case 6:
@@ -608,16 +672,16 @@ void ani_solid(unsigned changed)
         {
           case 0:
           case 1:
-            pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL1,y[j]);
             break;
           case 2:
           case 3:
-            pix1 = MAKPIX_SCL(0xff,0xA0,0x00,y[j]);  // goled
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL2,y[j]);  // goled
             break;
           case 4:
           case 5:
           case 6:
-            pix1 = MAKPIX_SCL(0xc8,0x00,0x0a,y[j]); // crimson red
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL3,y[j]); // crimson red
             break;
         }
         break;
@@ -627,25 +691,25 @@ void ani_solid(unsigned changed)
         switch ( sel1[j] ) 
         {
           case 0:
-            pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL1,y[j]);
             break;
           case 1:
-            pix1 = MAKPIX_SCL(0xff,0xA0,0x00,y[j]);
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL2,y[j]);
             break;
           case 2:
-            pix1 = MAKPIX_SCL(0xc8,0x00,0x0a,y[j]);
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL3,y[j]);
             break;
           case 3:
-            pix1 = MAKPIX_SCL(0x87,0x28,0x00,y[j]);
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL4,y[j]);
             break;
           case 4:
-            pix1 = MAKPIX_SCL(0x1e,0x64,0x00,y[j]);  // moss green
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL5,y[j]);  // moss green
             break;
           case 5:
-            pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL6,y[j]);
             break;
           case 6:
-            pix1 = MAKPIX_SCL(0x00,0xff,0x1e,y[j]);
+            pix1 = MAKPIX_SCL(SEAS_SOLID_COL7,y[j]);
             break;
         }        
         break;
@@ -672,7 +736,7 @@ void ani_pong(unsigned changed)
   static int pausectr = 0;
   int bounce = 1;
   int cross = 0;
-  uint32_t color;
+  CRGB color;
 
   // anim;
   // 0-3 = single bar bounce (red, green, blue, white)
@@ -688,14 +752,15 @@ void ani_pong(unsigned changed)
 
   int animclr = anim & 0x03;
   
+
   if (animclr == 0) 
-    color = 0xff4000;     // orange
+    color = SEAS_PONG_COL1;     // orange
   else if (animclr == 1) 
-    color = 0xffa000;     // yellow/gold
+    color = SEAS_PONG_COL2;     // yellow/gold
   else if (animclr == 2) 
-    color = 0x872800;     // copper
+    color = SEAS_PONG_COL1;     // copper
   else // (animclr == 3) 
-    color = 0x00ff1e;   // green
+    color = SEAS_PONG_COL4;   // green
 
   int animmode = anim >> 2;
   if (animmode == 0) 
@@ -757,6 +822,7 @@ void ani_pong(unsigned changed)
 #endif  
 }
 
+
 void ani_scroll(unsigned changed)
 {
   static int startIndex = 0;
@@ -765,7 +831,7 @@ void ani_scroll(unsigned changed)
   static CRGB leds2[MAX_NUM_LEDS];
   static CHSV pixhsv_col =  CHSV( HUE_PURPLE, 255, 255);
   static CHSV pixhsv_wht =  CHSV( HUE_PURPLE, 0, 255);
-  static CHSV pixhsv_org =  CHSV( HUE_ORANGE, 0, 255);
+  static CHSV pixhsv_wav =  CHSV( SEAS_HUE_WAV, 0, 255);
   CRGB pix1;
   int clrfreq;
   int anim = anim_no - BASE_SCROLL;
@@ -777,41 +843,39 @@ void ani_scroll(unsigned changed)
   // assumption is that this is called onece every ms
   if (--lpdelay > 0) return;
 
-//    currentPalette = RainbowColors_p;  // CloudColors_p, LavaColors_p, OceanColors_p, ForestColors_p, RainbowColors_p, RainbowStripeColors_p, PartyColors_p, HeatColors_p
-
   // modes 1-4, palleted colors
   switch (anim) {
     case 0:
-      currentPalette = PartyColors_p;
+      currentPalette = SEAS_PAL_1;
       pix1 = ColorFromPalette( currentPalette , colorIndex, 255, blend);
       colorIndex = colorIndex + freq;
       lpdelay = del;
       break;
     case 1:
-      currentPalette = FallCoolors_rgb_p;
+      currentPalette = SEAS_PAL_2;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       colorIndex = colorIndex + freq;
       lpdelay = del;
       break;
     case 2:
-      currentPalette = HeatColors_p;
+      currentPalette = SEAS_PAL_3;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       colorIndex = colorIndex + freq;
       lpdelay = del;
       break;
     case 3:
-      currentPalette = HalloweenColors_rgb_p;
+      currentPalette = SEAS_PAL_4;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       colorIndex = colorIndex + freq;
       lpdelay = del;
       break;
     case 4:
-      sin_color(pixhsv_org, 3.33333 * freq);  // freq must be high(10) for starfield sim
-      pix1 = pixhsv_org;
+      sin_color(pixhsv_wav, 3.33333 * freq);  // freq must be high(10) for starfield sim
+      pix1 = pixhsv_wav;
       lpdelay = del;
       break;
     case 5:
-      shift_val(pixhsv_org, freq);
+      shift_val(pixhsv_col, freq);
       pix1 = pixhsv_col;
       lpdelay = del;
       break;

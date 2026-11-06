@@ -61,6 +61,8 @@ version:
     mode 256 all white
   ver9:
     bugfix, making array size (num_leds) crashes system
+  ver10:
+    compile-time season select
 
 
 power (s3 zero), current @5v
