@@ -1,17 +1,34 @@
+#define SW_VERSION (9)
+// ************** features **************
+#define NET
+//#define GRAPH
+// ************** platform : TODO use platformIO's macros **************
+//#define S3MINIPRO
+//#define S2MINI
+#define S3ZERO
+//#define C3OLED
+// ************** parameters **************
+#define LOCAL_IP (133)
+#define DEF_BRIGHTNESS  (128)
+#define MAX_NUM_LEDS    (1024)
+#define NUM_LEDS_DEF (32)
+#define LED_TYPE WS2812
+#define COLOR_ORDER RGB // RGB for outside lights, GRB for tree lights, RGB for internal ws2812
+#define BUT_THRESH (10)
+#define U8G
+
 #include <Arduino.h>
 #include <Preferences.h>
 #include <FastLED.h>
 
-#define NET
-#ifdef ARDUINO_ESP32_C3_DEVKITM_1
-#define GRAPH
+// be sure that graphics is supported
+#ifndef ARDUINO_ESP32_C3_DEVKITM_1
+#undef GRAPH
 #endif
-#define U8G
 
 #if defined (NET)
 #include "WiFi.h"
 #endif
-
 
 #if defined (GRAPH)
 #if defined (U8G)
@@ -21,24 +38,6 @@
 #include <Arduino_GFX_Library.h>
 #endif // U8G
 #endif // GRAPH
-
-
-
-//#define S3MINIPRO
-//#define S2MINI
-//#define S3ZERO
-#define C3OLED
-
-#define LOCAL_IP (132)
-#define DEF_BRIGHTNESS  (128)
-//#define EN_PIN      (12)
-//#define DEB_PIN     (42)
-
-#define MAX_NUM_LEDS    (1024)
-#define NUM_LEDS_DEF (32)
-#define LED_TYPE    WS2812
-#define COLOR_ORDER GRB // GRB for 2812 strip, RGB for christmas lights
-#define BUT_THRESH (10)
 
 // 6 scroll
 #define BASE_SCROLL (1)
@@ -56,19 +55,19 @@
 #define DEF_CYC (10000)
 
 #if defined (S3ZERO)
-#define LED_PIN     (3)  // 8 for ESP32-S3ZERO (21 builtin), 14 for s3mini-pro, 16 for s2 mini
+#define LED_PIN (3)
 #define GND_PIN (2)
-#define LED_PIN_AUX     (21)  // 8 for ESP32-S3ZERO (21 builtin), 14 for s3mini-pro. C3 flaky, C5 nothing
+//#define LED_PIN_AUX     (21)
 #define NUM_LEDS_AUX    (1)
 #define LED_TYPE_AUX    WS2812
 #define COLOR_ORDER_AUX RGB
-#define BUT_PIN     (0)   //0 for ESP32-S3ZERO, 47 on S3MINPO, 9 for SEED C3, 0 for s2-mini
+#define BUT_PIN     (0)
 #endif // S3ZERO
 
 #if defined (C3OLED)
 #define LED_PIN     (2) 
-#define BUT_PIN     (9)   //0 for ESP32-S3ZERO, 47 on S3MINPO, 9 for SEED C3, 0 for s2-mini
-#endif // 
+#define BUT_PIN     (9)
+#endif
 
 
 // net
@@ -123,7 +122,7 @@ Arduino_GFX *gfx = new Arduino_GC9107(bus, DF_GFX_RST, 1 /* rotation */, true /*
 #define MAKPIX(r,g,b) ( ( r << 16 ) | ( g << 8 ) | ( b ) )
 
 CRGB leds[MAX_NUM_LEDS];
-#ifdef S3ZERO
+#if defined(LED_PIN_AUX)
 CRGB leds_aux[NUM_LEDS_AUX];
 #endif
 
@@ -154,6 +153,40 @@ extern const TProgmemRGBPalette16 ChristmasColors_p FL_PROGMEM =
     0x8888AB, 0x7F7f81, 0xAB5555, 0xD52B2B
 };
 
+extern const TProgmemRGBPalette16 HalloweenColors_rgb_p FL_PROGMEM =
+{
+    0x1b1b1b, 0xff8f00, 0xf0e130, 0xe76d2c,
+    0x000000, 0x242124, 0x90ee90, 0xb284be,
+    0x612302, 0xda9100, 0xf8f8ff, 0x8a0707,
+    0xe3dac9, 0x00a86b, 0x353839, 0xb87333
+};
+
+extern const TProgmemRGBPalette16 FallCoolors_rgb_p FL_PROGMEM =
+{
+    0xdc793e, 0xa2242f, 0xc48a69, 0x0f4c81,
+    0xd9ce52, 0xd19c97, 0x006b54, 0x6a2e2a,
+    0xe6af91, 0x6b264b, 0x63563b, 0x263056,
+    0xf4e4c1, 0x92949b, 0x90ee90, 0xf0e130
+};
+
+extern const TProgmemRGBPalette16 HalloweenColors_grb_p FL_PROGMEM =
+{
+    0x1b1b1b, 0x8fff00, 0xe1f030, 0x6de72c,
+    0x000000, 0x212424, 0xee9090, 0x84b2be,
+    0x236102, 0x91da00, 0xf8f8ff, 0x078a07,
+    0xdae3c9, 0xa8006b, 0x383539, 0x73b833
+};
+
+extern const TProgmemRGBPalette16 FallCoolors_grb_p FL_PROGMEM =
+{
+    0x79dc3e, 0x24a22f, 0x8ac469, 0x4c0f81,
+    0xced952, 0x9cd197, 0x6b0054, 0x2e6a2a,
+    0xafe691, 0x266b4b, 0x56633b, 0x302656,
+    0xe4f4c1, 0x94929b, 0xee9090, 0xe1f030
+};
+
+
+
 extern const TProgmemRGBPalette16 solidcolor_p FL_PROGMEM =
 {
     0x00FF00, 0x00FF00, 0x00FF00, 0x00FF00,
@@ -173,12 +206,13 @@ Preferences prefs;  // global instance
 // global
 int start = BASE_SOLID;
 unsigned num_leds = NUM_LEDS_DEF;
+unsigned num_leds_pend = num_leds;
 unsigned anim_no = start;
 int timer_ct = 0;
 int freq = DEF_CLRFREQ;
 int del = DEF_DEL;
 int cyc = DEF_CYC;
-int ver = 6;
+int ver = SW_VERSION;
 int storecount = 0;
 int brightness = DEF_BRIGHTNESS;
 uint32_t mode = 0;
@@ -189,6 +223,7 @@ int anim_changed = 1;
 void draw_text(String txt1, String txt2, String txt3);
 void gfx_init(void);
 void shift_color(CHSV& incolor, int color_freq);
+void shift_val(CHSV& incolor, int color_freq);
 void ani_scroll(unsigned changed);
 void ani_pong(unsigned changed);
 void ani_solid(unsigned changed);
@@ -281,7 +316,7 @@ void init_leds()
 {
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, num_leds).setCorrection( TypicalLEDStrip );
 
-#if defined(S3ZERO)
+#if defined(LED_PIN_AUX)
     FastLED.addLeds<LED_TYPE_AUX, LED_PIN_AUX, COLOR_ORDER_AUX>(leds_aux, NUM_LEDS_AUX).setCorrection( TypicalLEDStrip );
 #endif    
     FastLED.setBrightness(  brightness );
@@ -293,7 +328,7 @@ void putfs()
   ++storecount;
   prefs.putUInt("storecount", storecount);
   prefs.putUInt("ver", ver);
-  prefs.putUInt("num_leds", num_leds);
+  prefs.putUInt("num_leds", num_leds_pend);
   prefs.putInt("freq", freq);
   prefs.putInt("del", del);
   prefs.putInt("cyc", cyc);
@@ -302,8 +337,8 @@ void putfs()
   prefs.putUInt("mode", mode);
   
 
-  Serial.printf("putfs: storect=%u, storedver=%u, leds=%u, freq=%d, del=%d, cyc=%d, brigt=%d,start=%d\n", 
-    storecount, ver, num_leds, freq, del, cyc, brightness, start);
+  Serial.printf("putfs: storect=%u, storedver=%u, leds=%u, new_num_leds=%u,freq=%d, del=%d, cyc=%d, brigt=%d,start=%d\n", 
+    storecount, ver, num_leds, num_leds_pend, freq, del, cyc, brightness, start);
 }
 
 void readfs()
@@ -311,6 +346,7 @@ void readfs()
   storecount = prefs.getUInt("storecount", 0);  
   uint32_t storedver = prefs.getUInt("ver", 0);  
   num_leds = prefs.getUInt("num_leds", NUM_LEDS_DEF);  
+  num_leds_pend = num_leds;
   freq = prefs.getInt("freq", DEF_CLRFREQ);  
   del = prefs.getInt("del", DEF_DEL);  
   cyc = prefs.getInt("cyc", DEF_CYC);
@@ -336,16 +372,33 @@ char b1[16], b2[16], b3[16];
 void loop()
 {
   static int but_ct = 0;
-  
+
+  // **** can anim_changed govern this entire if..then block? ***
   if (anim_no == 0)
     ani_blank(anim_changed);
   else if (anim_no < BASE_PONG)
     ani_scroll(anim_changed);
   else if (anim_no < BASE_SOLID)
     ani_pong(anim_changed);
-  else 
+  else  if (anim_no < NUM_ANI+1)
     ani_solid(anim_changed);
 
+  else if (anim_no == 256)
+  {
+    if (anim_changed)
+    {
+      // special case, set to solid white
+      for (int j=0; j<num_leds; ++j) 
+        leds[j] = MAKPIX(255,255,255);
+#if defined (LED_PIN_AUX)        
+      leds_aux[0] = MAKPIX(255,255,255);
+#endif
+    }
+  }
+  else
+  {
+    ani_blank(anim_changed);
+  }
 
   #ifdef GRAPH
     if (anim_changed)
@@ -398,7 +451,7 @@ void loop()
   ++timer_ct;
   
   // auto increment
-  if ( ( (timer_ct % cyc) ==0) && anim_no > 0)
+  if ( ( (timer_ct % cyc) ==0) && ( anim_no&255) > 0)
   {
     anim_no = change_anim(anim_no, mode);
     anim_changed = 1;
@@ -463,10 +516,13 @@ unsigned change_anim(unsigned anim_no, unsigned mode)
 void ani_blank(unsigned changed)
 {
   if (changed == 1)
+  {
     for (int j=0; j<num_leds; ++j) 
       leds[j] = 0;
-  
-
+#if defined(LED_PIN_AUX)  
+    leds_aux[0] = 0;
+#endif      
+  }
 }
 
 void ani_solid(unsigned changed)
@@ -526,25 +582,24 @@ void ani_solid(unsigned changed)
 
   for (int j=0; j<num_leds; ++j) 
   {
-    int piss;
     // modes 1-4, palleted colors
     switch (anim) 
     {
       case 0:
       case 8:
-        pix1 = MAKPIX_SCL(0xff,0,0,y[j]);
+        pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
         break;
       case 1:
       case 9:
-        pix1 = MAKPIX_SCL(0,0xff,0,y[j]);
+        pix1 = MAKPIX_SCL(0xff,0xA0,0x00,y[j]);
         break;
       case 2:
       case 10:
-        pix1 = MAKPIX_SCL(0,0,0xff,y[j]);
+        pix1 = MAKPIX_SCL(0xc8,0x00,0x0a,y[j]);  // crimson red
         break;
       case 3:
       case 11:
-        pix1 = MAKPIX_SCL(0xff,0xff,0xff,y[j]);
+        pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
         break;
       case 4:
       case 6:
@@ -553,16 +608,16 @@ void ani_solid(unsigned changed)
         {
           case 0:
           case 1:
-            pix1 = MAKPIX_SCL(0xff,0,0,y[j]);
+            pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
             break;
           case 2:
           case 3:
-            pix1 = MAKPIX_SCL(0,0xff,0,y[j]);
+            pix1 = MAKPIX_SCL(0xff,0xA0,0x00,y[j]);  // goled
             break;
           case 4:
           case 5:
           case 6:
-            pix1 = MAKPIX_SCL(0,0,0xff,y[j]);
+            pix1 = MAKPIX_SCL(0xc8,0x00,0x0a,y[j]); // crimson red
             break;
         }
         break;
@@ -572,25 +627,25 @@ void ani_solid(unsigned changed)
         switch ( sel1[j] ) 
         {
           case 0:
-            pix1 = MAKPIX_SCL(0xff,0,0,y[j]);
+            pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
             break;
           case 1:
-            pix1 = MAKPIX_SCL(0,0xff,0,y[j]);
+            pix1 = MAKPIX_SCL(0xff,0xA0,0x00,y[j]);
             break;
           case 2:
-            pix1 = MAKPIX_SCL(0,0,0xff,y[j]);
+            pix1 = MAKPIX_SCL(0xc8,0x00,0x0a,y[j]);
             break;
           case 3:
-            pix1 = MAKPIX_SCL(0xff,0xff,0xff,y[j]);
+            pix1 = MAKPIX_SCL(0x87,0x28,0x00,y[j]);
             break;
           case 4:
-            pix1 = MAKPIX_SCL(0xff,0,0xff,y[j]);
+            pix1 = MAKPIX_SCL(0x1e,0x64,0x00,y[j]);  // moss green
             break;
           case 5:
-            pix1 = MAKPIX_SCL(0xff,0xff,0,y[j]);
+            pix1 = MAKPIX_SCL(0xff,0x40,0x00,y[j]);
             break;
           case 6:
-            pix1 = MAKPIX_SCL(0,0xff,0xff,y[j]);
+            pix1 = MAKPIX_SCL(0x00,0xff,0x1e,y[j]);
             break;
         }        
         break;
@@ -599,7 +654,7 @@ void ani_solid(unsigned changed)
     leds[j] = pix1;
   }
   FastLED.show();
-#ifdef NUM_LEDS_AUX  
+#ifdef LED_PIN_AUX
   leds_aux[0] = pix1;
 #endif
  
@@ -634,13 +689,13 @@ void ani_pong(unsigned changed)
   int animclr = anim & 0x03;
   
   if (animclr == 0) 
-    color = 0xff0000;
+    color = 0xff4000;     // orange
   else if (animclr == 1) 
-    color = 0x00ff00;
+    color = 0xffa000;     // yellow/gold
   else if (animclr == 2) 
-    color = 0x0000ff;
+    color = 0x872800;     // copper
   else // (animclr == 3) 
-    color = 0xffffff;
+    color = 0x00ff1e;   // green
 
   int animmode = anim >> 2;
   if (animmode == 0) 
@@ -697,7 +752,7 @@ void ani_pong(unsigned changed)
     if (startIndex >= num_leds) startIndex = 0;
   }
   lpdelay = 1;
-#ifdef NUM_LEDS_AUX  
+#ifdef LED_PIN_AUX
   leds_aux[0] = 0xFFFFFF;
 #endif  
 }
@@ -710,6 +765,7 @@ void ani_scroll(unsigned changed)
   static CRGB leds2[MAX_NUM_LEDS];
   static CHSV pixhsv_col =  CHSV( HUE_PURPLE, 255, 255);
   static CHSV pixhsv_wht =  CHSV( HUE_PURPLE, 0, 255);
+  static CHSV pixhsv_org =  CHSV( HUE_ORANGE, 0, 255);
   CRGB pix1;
   int clrfreq;
   int anim = anim_no - BASE_SCROLL;
@@ -732,30 +788,30 @@ void ani_scroll(unsigned changed)
       lpdelay = del;
       break;
     case 1:
-      currentPalette = LavaColors_p;
+      currentPalette = FallCoolors_rgb_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       colorIndex = colorIndex + freq;
       lpdelay = del;
       break;
     case 2:
-      currentPalette = OceanColors_p;
+      currentPalette = HeatColors_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       colorIndex = colorIndex + freq;
       lpdelay = del;
       break;
     case 3:
-      currentPalette = ChristmasColors_p;
+      currentPalette = HalloweenColors_rgb_p;
       pix1 = ColorFromPalette( currentPalette, colorIndex, 255, blend);
       colorIndex = colorIndex + freq;
       lpdelay = del;
       break;
     case 4:
-      sin_color(pixhsv_wht, 3.33333 * freq);  // freq must be high(10) for starfield sim
-      pix1 = pixhsv_wht;
+      sin_color(pixhsv_org, 3.33333 * freq);  // freq must be high(10) for starfield sim
+      pix1 = pixhsv_org;
       lpdelay = del;
       break;
     case 5:
-      shift_color(pixhsv_col, freq);
+      shift_val(pixhsv_org, freq);
       pix1 = pixhsv_col;
       lpdelay = del;
       break;
@@ -767,7 +823,7 @@ void ani_scroll(unsigned changed)
   for (int j=0; j<startIndex; ++j)    leds[n++] = leds2[j];
   FastLED.show();
   startIndex = startIndex - 1;  if (startIndex < 0) startIndex += num_leds;
-#ifdef NUM_LEDS_AUX  
+#ifdef LED_PIN_AUX
   leds_aux[0] = pix1;
 #endif
 }
@@ -786,7 +842,17 @@ void shift_color(CHSV& incolor, int color_freq)
   incolor.hue = hue;
 }
 
+void shift_val(CHSV& incolor, int color_freq)
+{
+  int valinc = color_freq;
 
+  int val = incolor.val;
+  val = val + valinc;
+  if (val > 255) val = 0;
+  if (val < 0) val = 255;
+
+  incolor.val = val;
+}
 
 void sin_color(CHSV& incolor, int color_freq)
 {
@@ -833,7 +899,7 @@ int network_sm() {
   }
 
   // check for client connections
-  if (net_status.stat & NET_STAT_CONN) {
+  if (net_status.stat == NET_STAT_CONN || net_status.stat == NET_STAT_CLIENT) {
     // if connected to network, check client connected or dropped
     check_client_connection();
   }
@@ -925,10 +991,9 @@ void wifi_server_process()
         int test_leds = atoi(infostr+1);
         if (test_leds > 0 && test_leds <= MAX_NUM_LEDS)
         {
-          num_leds = test_leds;
-          sprintf(infostr, "OK num_leds=%d\n", num_leds);
+          num_leds_pend = test_leds;
+          sprintf(infostr, "OK num_leds(save+restart)=%d\n", num_leds_pend);
           wifi_client.write(infostr, strlen(infostr));
-          init_leds();
         }
     }
     else if (rxbuf[0] == 'B' || rxbuf[0] == 'b' )
@@ -1011,6 +1076,14 @@ void disp_net_status(void) {
 }
 
 void check_client_connection() {
+  if (net_status.stat == NET_STAT_CLIENT && !wifi_client.connected()) {
+    wifi_client.stop();
+    rem_ipaddr_str = "";
+    net_status.stat = NET_STAT_CONN;
+    Serial.println("Client disconnected");
+    disp_net_status();
+  }
+
   if (wifi_server.hasClient()) {
     // If we are already connected to another computer,
     // then reject the new connection. Otherwise accept
