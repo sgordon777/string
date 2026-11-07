@@ -91,6 +91,7 @@ U2=74LSHCT125N
 CN1_1=STRING_5V           U1_1 (jumpered)
 CN1_2=STRING_GND          U1_2
 CN1_3=STRING_DATA         U2_8
+.
 
 U1_1=5v                   U2_14, CN1_1(jumpered)
 U1_2=GND                  U2_7, CN1_2
@@ -98,10 +99,24 @@ U1_5=IO2                  U2_10 (output_ground)
 U1_6=IO3                  U2_9 (output)
 
 U2_7=GND                  U1_2
-U2_8=3Y                   CN1_3
-U2_9=3A                   U1_6
-U2_10=3OE'                U1_5
+U2_8=#3Y                   CN1_3
+U2_9=#3A                   U1_6
+U2_10=#3OE                U1_5
 U2_14=VCC                 U1_1
+
+
+    right-bottom
+                
+GP7     GP6       
+        GP5              
+        GP4 dd 3Y*    GND
+        GP3 -- 3A
+        GP2 -- 3E
+        GP1 dd 4O
+        3v3 dd 4A           DATA
+RX      GND dd 4E           GND
+TX      5v     VCC----1E----5V
+
 
 
 
